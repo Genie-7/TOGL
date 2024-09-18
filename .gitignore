@@ -160,3 +160,10 @@ dmypy.json
 cython_debug/
 
 slurm-*.out
+checkpoints/
+data/CIFAR10/
+data/MNIST/
+
+wandb
+
+poetry.lock

@@ -78,8 +78,13 @@ def main(model_cls, dataset_cls, args):
     )
     stop_on_min_lr_cb = StopOnMinLR(args.min_lr)
     lr_monitor = LearningRateMonitor('epoch')
+
+     # Create a directory for checkpoints
+    checkpoint_dir = os.path.join(os.getcwd(), "checkpoints")
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
     checkpoint_cb = ModelCheckpoint(
-        dirpath=wandb_logger.experiment.dir,
+        dirpath=checkpoint_dir,
         monitor='val_loss',
         mode='min',
         verbose=True
@@ -91,13 +96,11 @@ def main(model_cls, dataset_cls, args):
         logger=wandb_logger,
         log_every_n_steps=5,
         max_epochs=args.max_epochs,
-        callbacks=[stop_on_min_lr_cb, checkpoint_cb, lr_monitor]
+        callbacks=[stop_on_min_lr_cb, checkpoint_cb, lr_monitor],
+        default_root_dir=checkpoint_dir  # Specify the directory for saving checkpoints
     )
     trainer.fit(model, datamodule=dataset)
     test_results = trainer.test(test_dataloaders=dataset.test_dataloader())[0]
-
-
-
 
     # Just for interest see if loading the state with lowest val loss actually
     # gives better generalization performance.
@@ -133,18 +136,21 @@ if __name__ == '__main__':
     parser.add_argument('--max_epochs', type=int, default=1000)
     parser.add_argument("--paired", type = str2bool, default=False)
     parser.add_argument("--merged", type = str2bool, default=False)
-    
+    print("wei")
     partial_args, _ = parser.parse_known_args()
+    print("wei")
 
     if partial_args.model is None or partial_args.dataset is None:
         parser.print_usage()
         sys.exit(1)
     model_cls = MODEL_MAP[partial_args.model]
+    print("wei")
+
     #dataset_cls = DATASET_MAP[partial_args.dataset]
     dataset_cls = topo_data.get_dataset_class(**vars(partial_args))
-
+    print("wei")
     parser = model_cls.add_model_specific_args(parser)
     parser = dataset_cls.add_dataset_specific_args(parser)
     args = parser.parse_args()
-
+    print("wei")
     main(model_cls, dataset_cls, args)

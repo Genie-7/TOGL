@@ -57,9 +57,9 @@ def dataset_map_dict():
         'Cora': Cora,
         'CiteSeer' : CiteSeer,
         'PubMed': PubMed,
-        'MOLHIV': MOLHIV
+        'MOLHIV': MOLHIV,
+        'FASHIONMNIST': FashionMNIST
     }
-
     return DATASET_MAP
 
 
@@ -1144,3 +1144,96 @@ class CiteSeer(PlanetoidDataset):
 class PubMed(PlanetoidDataset):
     def __init__(self, **kwargs):
         super().__init__(name='PubMed', split = "public", **kwargs)
+
+
+from torch_geometric.data import Data as PyGData
+from torch_geometric.data import Batch as PyGBatch
+from torch.utils.data import Dataset, DataLoader
+import dgl
+
+class CustomFashionMNISTDataset(Dataset):
+    def __init__(self, data_path):
+        data = torch.load(data_path)
+        self.graphs = [self.dgl_to_pyg(g, l) for g, l in zip(data['graphs'], data['labels'])]
+
+    def __len__(self):
+        return len(self.graphs)
+
+    def __getitem__(self, idx):
+        return self.graphs[idx]
+
+    @staticmethod
+    def dgl_to_pyg(dgl_graph, label):
+        edge_index = torch.stack(dgl_graph.edges())
+        x = dgl_graph.ndata['feat'].float()
+        y = torch.tensor(label, dtype=torch.long)
+        return PyGData(x=x, edge_index=edge_index, y=y)
+
+def collate_fn(batch):
+    return PyGBatch.from_data_list(batch)
+
+class FashionMNIST(pl.LightningDataModule):
+    DEFAULT_DATA_DIR = "/Users/brendangignac/Documents/Summer2024/research/m4/superpixelProcessing"
+
+    def __init__(self, batch_size, use_node_attributes, num_workers=0, data_dir=None, **kwargs):
+        super().__init__()
+        self.batch_size = batch_size
+        self.num_workers = num_workers
+        self.data_dir = data_dir if data_dir else self.DEFAULT_DATA_DIR
+        self.task = Tasks.GRAPH_CLASSIFICATION
+        self.num_classes = 10
+
+        # Set node_attributes during initialization
+        sample_data = torch.load(os.path.join(self.data_dir, "train.pt"))
+        sample_graph = sample_data['graphs'][0]
+        self.node_attributes = sample_graph.ndata['feat'].shape[1]
+
+    def prepare_data(self):
+        for split in ['train', 'val', 'test']:
+            file_path = os.path.join(self.data_dir, f"{split}.pt")
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"Processed file not found: {file_path}")
+
+    def setup(self, stage=None):
+        self.train_dataset = CustomFashionMNISTDataset(os.path.join(self.data_dir, "train.pt"))
+        self.val_dataset = CustomFashionMNISTDataset(os.path.join(self.data_dir, "val.pt"))
+        self.test_dataset = CustomFashionMNISTDataset(os.path.join(self.data_dir, "test.pt"))
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            collate_fn=collate_fn,
+            pin_memory=True
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=collate_fn,
+            pin_memory=True
+        )
+
+    def test_dataloader(self):
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=collate_fn,
+            pin_memory=True
+        )
+
+    @classmethod
+    def add_dataset_specific_args(cls, parent):
+        import argparse
+        parser = argparse.ArgumentParser(parents=[parent], add_help=False)
+        parser.add_argument('--batch_size', type=int, default=32)
+        parser.add_argument('--use_node_attributes', type=str2bool, default=True)
+        parser.add_argument('--data_dir', type=str, default=None, help='Directory containing the .pt files (optional for FashionMNIST)')
+        return parser
